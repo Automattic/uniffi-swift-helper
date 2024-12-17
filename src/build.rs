@@ -1,5 +1,6 @@
 use std::{
     fs::File,
+    io::{BufRead, BufReader},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -162,6 +163,7 @@ fn generate_bindings(library_path: &Path, module_name: &str) -> Result<PathBuf> 
     uniffi_bindgen::bindings::generate_swift_bindings(options)?;
 
     reorganize_binding_files(&out_dir, module_name)?;
+    fix_swift_bindings(&out_dir)?;
 
     Ok(out_dir)
 }
@@ -187,8 +189,36 @@ fn reorganize_binding_files(bindings_dir: &Path, module_name: &str) -> Result<()
     writeln!(modulemap, r#"    export *"#)?;
     writeln!(modulemap, r#"}}"#)?;
 
-    // TODO: https://github.com/mozilla/uniffi-rs/pull/2341
-    // sed -i '' 's/^protocol UniffiForeignFutureTask /fileprivate protocol UniffiForeignFutureTask /' ".swift"
+    Ok(())
+}
+
+fn fix_swift_bindings(dir: &Path) -> Result<()> {
+    let swift_files = dir.files_with_extension("swift")?;
+
+    for path in swift_files {
+        let file = File::open(&path)?;
+        let reader = BufReader::new(file);
+
+        let updated_content: Vec<String> = reader
+            .lines()
+            .map(|line| {
+                let line = line.unwrap_or_default();
+
+                // Can be removed once the PR is released (probably in 0.28.4).
+                // https://github.com/mozilla/uniffi-rs/pull/2341
+                if line == "protocol UniffiForeignFutureTask {" {
+                    "fileprivate protocol UniffiForeignFutureTask {".to_string()
+                } else {
+                    line
+                }
+            })
+            .collect();
+
+        let mut file = File::create(&path)?;
+        for line in updated_content {
+            writeln!(file, "{}", line)?;
+        }
+    }
 
     Ok(())
 }

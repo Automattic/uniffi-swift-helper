@@ -76,7 +76,9 @@ fn build(args: BuildArgs) -> Result<()> {
 }
 
 fn generate_package(args: GeneratePackageArgs) -> Result<()> {
-    let map = args.package_name_map.split(',')
+    let map = args
+        .package_name_map
+        .split(',')
         .map(|pair| {
             let mut iter = pair.split(':');
             let key = iter.next().unwrap();

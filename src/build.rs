@@ -1,14 +1,14 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::Command,
 };
 
-use std::io::Write;
-
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand};
+use rinja::Template;
+use tempfile::tempdir;
 use uniffi_bindgen::bindings::SwiftBindingsOptions;
 
 use crate::utils::*;
@@ -145,7 +145,7 @@ fn build_uniffi_package(
     }
 }
 
-fn generate_bindings(library_path: &Path, module_name: &str) -> Result<PathBuf> {
+fn generate_bindings(library_path: &Path, ffi_module_name: &str) -> Result<PathBuf> {
     let out_dir = library_path.parent().unwrap().join("swift-bindings");
     fs::recreate_dir(&out_dir)?;
 
@@ -162,62 +162,77 @@ fn generate_bindings(library_path: &Path, module_name: &str) -> Result<PathBuf> 
     };
     uniffi_bindgen::bindings::generate_swift_bindings(options)?;
 
-    reorganize_binding_files(&out_dir, module_name)?;
-    fix_swift_bindings(&out_dir)?;
+    reorganize_binding_files(&out_dir, ffi_module_name)?;
+    fix_swift_bindings(&out_dir, ffi_module_name)?;
 
     Ok(out_dir)
 }
 
-fn reorganize_binding_files(bindings_dir: &Path, module_name: &str) -> Result<()> {
+fn reorganize_binding_files(bindings_dir: &Path, ffi_module_name: &str) -> Result<()> {
+    #[derive(Template)]
+    #[template(path = "module.modulemap", escape = "none")]
+    struct ModuleMapTemplate {
+        ffi_module_name: String,
+        header_files: Vec<String>,
+    }
+
     let headers_dir = bindings_dir.join("Headers");
     fs::recreate_dir(&headers_dir)?;
 
-    let modulemap_path = headers_dir.join("module.modulemap");
-    let mut modulemap = File::create_new(modulemap_path)?;
-    writeln!(modulemap, r#"module {} {{"#, module_name)?;
+    let mut header_files = vec![];
     for entry in std::fs::read_dir(bindings_dir)? {
         let entry = entry?;
         if entry.path().extension() == Some("h".as_ref()) {
-            writeln!(
-                modulemap,
-                r#"    header "{}""#,
-                entry.file_name().to_str().unwrap()
-            )?;
+            header_files.push(entry.file_name().into_string().unwrap());
             fs::move_file(&entry.path(), &headers_dir)?;
         }
     }
-    writeln!(modulemap, r#"    export *"#)?;
-    writeln!(modulemap, r#"}}"#)?;
+
+    let template = ModuleMapTemplate {
+        ffi_module_name: ffi_module_name.to_string(),
+        header_files,
+    };
+    let content = template.render()?;
+    let mut modulemap = File::create_new(headers_dir.join("module.modulemap"))?;
+    modulemap.write_all(content.as_bytes())?;
 
     Ok(())
 }
 
-fn fix_swift_bindings(dir: &Path) -> Result<()> {
+fn fix_swift_bindings(dir: &Path, ffi_module_name: &str) -> Result<()> {
     let swift_files = dir.files_with_extension("swift")?;
+    let tempdir = tempdir()?;
+
+    #[derive(Template)]
+    #[template(path = "binding-prefix.swift", escape = "none")]
+    struct PrefixTemplate {
+        ffi_module_name: String,
+    }
+    let prefix = PrefixTemplate {
+        ffi_module_name: ffi_module_name.to_string(),
+    }
+    .render()?;
 
     for path in swift_files {
-        let file = File::open(&path)?;
-        let reader = BufReader::new(file);
+        let reader = BufReader::new(File::open(&path)?);
+        let tempfile_path = tempdir.path().join("temp.swift");
+        let mut tempfile = File::create(&tempfile_path)?;
 
-        let updated_content: Vec<String> = reader
-            .lines()
-            .map(|line| {
-                let line = line.unwrap_or_default();
+        writeln!(tempfile, "{}\n", prefix)?;
 
-                // Can be removed once the PR is released (probably in 0.28.4).
-                // https://github.com/mozilla/uniffi-rs/pull/2341
-                if line == "protocol UniffiForeignFutureTask {" {
-                    "fileprivate protocol UniffiForeignFutureTask {".to_string()
-                } else {
-                    line
-                }
-            })
-            .collect();
+        for line in reader.lines() {
+            let mut line = line?;
+            if line == "protocol UniffiForeignFutureTask {" {
+                line = "fileprivate protocol UniffiForeignFutureTask {".to_string()
+            }
 
-        let mut file = File::create(&path)?;
-        for line in updated_content {
-            writeln!(file, "{}", line)?;
+            writeln!(tempfile, "{}", line)?;
         }
+
+        tempfile.sync_all()?;
+        std::mem::drop(tempfile);
+
+        std::fs::copy(tempfile_path, path)?;
     }
 
     Ok(())

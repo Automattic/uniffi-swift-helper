@@ -11,12 +11,7 @@ pub enum ApplePlatform {
 
 impl ApplePlatform {
     pub fn all() -> Vec<Self> {
-        vec![
-            Self::MacOS,
-            Self::IOS,
-            Self::TvOS,
-            Self::WatchOS,
-        ]
+        vec![Self::MacOS, Self::IOS, Self::TvOS, Self::WatchOS]
     }
 
     pub fn target_triples(&self) -> Vec<&'static str> {

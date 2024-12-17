@@ -5,6 +5,6 @@ mod spm;
 mod utils;
 mod xcframework;
 
-fn main() -> anyhow::Result<()> {
+pub fn cli_main() -> anyhow::Result<()> {
     cli::Cli::execute()
 }

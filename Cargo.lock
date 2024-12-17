@@ -670,7 +670,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "uniffi-swift-helpers"
+name = "uniffi-swift-helper"
 version = "0.1.0"
 dependencies = [
  "anyhow",

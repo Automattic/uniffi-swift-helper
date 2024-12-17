@@ -47,7 +47,7 @@ var package = Package(
         .target(
             name: "{{ target.name }}",
             dependencies: [
-                .target(name: swiftWrapperTargetName),
+                .target(name: "{{ target.name }}Internal"),
                 {% for dep in target.dependencies %}
                 .target(name: "{{ dep }}"),
                 {% endfor %}
@@ -59,17 +59,22 @@ var package = Package(
         ),
         {% endfor %}
 
-        .target(
-            name: swiftWrapperTargetName,
-            dependencies: [
-                .target(name: ffiTarget.name)
-            ],
-            path: ffiSwiftWrapperSourcePath,
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
-        ),
+        {% for target in internal_targets %}
+            .target(
+                name: "{{ target.name }}",
+                dependencies: [
+                    .target(name: ffiTarget.name)
+                ],
+                path: "{{ target.swift_wrapper_dir }}",
+                sources: ["{{ target.source_file }}"],
+                swiftSettings: [
+                    .swiftLanguageMode(.v5)
+                ]
+            ),
+        {% endfor %}
+
         ffiTarget,
+
         {% for target in targets %}
             .testTarget(
                 name: "{{ target.name }}Tests",
@@ -83,7 +88,7 @@ var package = Package(
                     .process("Resources")
                     {% endif %}
                 ]
-            )
+            ),
         {% endfor %}
     ]
 )

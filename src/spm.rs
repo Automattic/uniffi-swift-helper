@@ -11,7 +11,7 @@ use cargo_metadata::{DependencyKind, MetadataCommand, Package};
 use pathdiff::diff_paths;
 use rinja::Template;
 
-use crate::utils::ExecuteCommand;
+use crate::utils::{fs, ExecuteCommand, FileSystemExtensions};
 
 #[derive(Template)]
 #[template(path = "Package.swift", escape = "none")]
@@ -20,6 +20,7 @@ struct PackageTemplate {
     ffi_module_name: String,
     project_name: String,
     targets: Vec<Target>,
+    internal_targets: Vec<InternalTarget>,
 }
 
 struct Target {
@@ -43,7 +44,7 @@ impl Target {
             .exec()
             .with_context(|| format!("Can't get cargo metadata for package {}", package.name))?;
 
-        let swift_code_dir = metadata
+        let mut swift_code_dir = metadata
             .workspace_root
             .join("native/swift")
             .canonicalize()?;
@@ -53,6 +54,31 @@ impl Target {
                 package.name,
                 &swift_code_dir.display()
             )
+        }
+
+        if !swift_code_dir.starts_with(&root_dir) {
+            println!(
+                "{} swift code directory is outside of the cargo root directory.",
+                package.name
+            );
+            println!(
+                "⚠️ Remember to run the command again when {} cargo dependency is updated.",
+                package.name
+            );
+
+            println!("Copying swift code directory to the cargo root directory");
+
+            let cargo_target_dir = root_dir.join("target");
+            let vendor_path = cargo_target_dir.join("uniffi-swift-helper/vendor");
+            let new_path = vendor_path.join(&package.name);
+            fs::recreate_dir(new_path.as_path())?;
+
+            println!("  - from: {}", swift_code_dir.display());
+            println!("  - to: {}", new_path.display());
+
+            fs::copy_dir(&swift_code_dir, &new_path)?;
+
+            swift_code_dir = new_path;
         }
 
         // There could be 'Sources' and 'Tests' directories in the swift code directory.
@@ -80,7 +106,6 @@ pub fn generate_swift_package(
     packages: HashMap<String, String>,
 ) -> Result<()> {
     let metadata = MetadataCommand::new()
-        .no_deps()
         .exec()
         .with_context(|| "Can't get cargo metadata")?;
 
@@ -122,11 +147,17 @@ pub fn generate_swift_package(
         targets.push(target);
     }
 
+    let internal_targets = internal_targets(
+        Path::new(&format!("target/{}/swift-wrapper", &ffi_module_name)),
+        &packages,
+    )?;
+
     let template = PackageTemplate {
         package_name: packages.get(&top_level_package).unwrap().clone(),
         ffi_module_name,
         project_name,
         targets,
+        internal_targets,
     };
     let content = template.render()?;
     let dest = metadata.workspace_root.join("Package.swift");
@@ -165,4 +196,39 @@ where
         .and_then(|s| s.to_str())
         .map(|s| s.to_string())
         .unwrap()
+}
+
+struct InternalTarget {
+    name: String,
+    swift_wrapper_dir: String,
+    source_file: String,
+}
+
+fn internal_targets(
+    swift_wrapper_dir: &Path,
+    packages: &HashMap<String, String>,
+) -> Result<Vec<InternalTarget>> {
+    let files = swift_wrapper_dir.files_with_extension("swift")?;
+    if files.is_empty() {
+        anyhow::bail!(
+            "No Swift source files found in {}. Run the build command first.",
+            swift_wrapper_dir.display()
+        )
+    }
+
+    let targets = files.iter().map(|f| {
+        let file_name = f.file_name().and_then(|f| f.to_str()).unwrap();
+        let cargo_package_name = file_name
+            .strip_suffix(".swift")
+            .map(|f| f.to_string())
+            .unwrap();
+        let target_name = packages.get(&cargo_package_name).unwrap();
+        InternalTarget {
+            name: format!("{}Internal", target_name),
+            swift_wrapper_dir: swift_wrapper_dir.to_str().unwrap().to_string(),
+            source_file: file_name.to_string(),
+        }
+    });
+
+    Ok(targets.collect())
 }

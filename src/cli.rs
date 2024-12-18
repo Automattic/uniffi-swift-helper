@@ -5,8 +5,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::apple_platform::ApplePlatform;
-use crate::build;
-use crate::spm;
+use crate::build::BuildExtensions;
+use crate::project::Project;
+use crate::spm::SPMResolver;
 
 #[derive(Parser)]
 pub(crate) struct Cli {
@@ -23,8 +24,6 @@ enum Commands {
 #[derive(Parser)]
 struct BuildArgs {
     #[arg(long)]
-    package: String,
-    #[arg(long)]
     only_ios: bool,
     #[arg(long)]
     only_macos: bool,
@@ -36,8 +35,6 @@ struct BuildArgs {
 
 #[derive(Parser)]
 struct GeneratePackageArgs {
-    #[arg(long)]
-    package: String,
     #[arg(long)]
     ffi_module_name: String,
     #[arg(long)]
@@ -67,12 +64,8 @@ fn build(args: BuildArgs) -> Result<()> {
         vec![]
     };
 
-    build::build(
-        args.package,
-        args.profile,
-        args.ffi_module_name,
-        apple_platforms,
-    )
+    let project = Project::new(args.ffi_module_name)?;
+    project.build(args.profile, apple_platforms)
 }
 
 fn generate_package(args: GeneratePackageArgs) -> Result<()> {
@@ -87,7 +80,9 @@ fn generate_package(args: GeneratePackageArgs) -> Result<()> {
         })
         .collect::<HashMap<String, String>>();
 
-    // spm::generate_swift_package(&args.package, map)
-    // spm::generate_swift_package(args.package, args.ffi_module_name, args.project_name, map)
-    spm::generate_swift_package2(args.ffi_module_name, args.project_name, map)
+    let resolver = SPMResolver {
+        project: Project::new(args.ffi_module_name)?,
+        cargo_package_to_spm_target_map: map,
+    };
+    resolver.generate_swift_package(args.project_name)
 }

@@ -12,21 +12,17 @@ pub fn create_xcframework(
     targets: Vec<String>,
     profile: String,
     name: &str,
+    xcframework: &Path,
+    swift_wrapper: &Path,
 ) -> Result<()> {
     let temp_dir = cargo_target_dir.join("tmp/wp-rs-xcframework");
     fs::recreate_dir(&temp_dir)?;
-
-    let output = cargo_target_dir.join(name);
-    fs::recreate_dir(&output)?;
-
-    let xcframework = output.join(format!("{}.xcframework", name,));
-    let swift_wrapper = output.join("swift-wrapper");
     XCFramework::new(&targets, &profile)?.create(
         cargo_target_dir,
         name,
         &temp_dir,
-        &xcframework,
-        &swift_wrapper,
+        xcframework,
+        swift_wrapper,
     )?;
 
     Ok(())

@@ -33,7 +33,7 @@ pub(crate) trait FileSystemExtensions {
     fn files_with_extension(&self, ext: &str) -> Result<Vec<PathBuf>>;
 }
 
-impl FileSystemExtensions for Path {
+impl<T> FileSystemExtensions for T where T: AsRef<Path> {
     fn files_with_extension(&self, ext: &str) -> Result<Vec<PathBuf>> {
         let files = std::fs::read_dir(self)?
             .filter_map(|f| f.ok())
@@ -50,7 +50,10 @@ pub(crate) mod fs {
 
     use super::*;
 
-    pub fn recreate_dir<P>(dir: P) -> Result<()> where P: AsRef<Path> {
+    pub fn recreate_dir<P>(dir: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
         let dir = dir.as_ref();
 
         if dir.exists() {
@@ -78,7 +81,10 @@ pub(crate) mod fs {
         Ok(destination)
     }
 
-    pub fn copy_dir<P>(src: P, dst: P) -> std::io::Result<()> where P: AsRef<Path> {
+    pub fn copy_dir<P>(src: P, dst: P) -> std::io::Result<()>
+    where
+        P: AsRef<Path>,
+    {
         let src = src.as_ref();
         let dst = dst.as_ref();
 
@@ -99,5 +105,17 @@ pub(crate) mod fs {
         }
 
         Ok(())
+    }
+
+    pub fn relative_path<P, B>(path: P, base: B) -> String
+    where
+        P: AsRef<Path>,
+        B: AsRef<Path>,
+    {
+        pathdiff::diff_paths(path, base)
+            .as_ref()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+            .unwrap()
     }
 }

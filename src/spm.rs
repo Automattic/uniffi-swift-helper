@@ -7,10 +7,10 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use cargo_metadata::{camino::Utf8PathBuf, DependencyKind, Metadata, MetadataCommand, Package};
-use pathdiff::diff_paths;
+use cargo_metadata::{camino::Utf8PathBuf, MetadataCommand};
 use rinja::Template;
 
+use crate::project::*;
 use crate::utils::{fs, ExecuteCommand};
 
 #[derive(Template)]
@@ -50,18 +50,6 @@ where
     Ok(subdirs[0].path())
 }
 
-fn relative_path<P, B>(path: P, base: B) -> String
-where
-    P: AsRef<Path>,
-    B: AsRef<Path>,
-{
-    diff_paths(path, base)
-        .as_ref()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_string())
-        .unwrap()
-}
-
 struct InternalTarget {
     name: String,
     swift_wrapper_dir: String,
@@ -69,146 +57,45 @@ struct InternalTarget {
     dependencies: Vec<String>,
 }
 
-#[derive(Debug)]
-struct UniffiPackage {
-    name: String,
-    manifest_path: Utf8PathBuf,
-    dependencies: Vec<UniffiPackage>,
-}
-
-pub fn generate_swift_package2(
-    ffi_module_name: String,
-    project_name: String,
-    packages: HashMap<String, String>,
-) -> Result<()> {
-    let metadata = MetadataCommand::new()
-        .exec()
-        .with_context(|| "Can't get cargo metadata")?;
-
-    if metadata.workspace_root.as_std_path() != std::env::current_dir()? {
-        anyhow::bail!("The current directory is not the cargo root directory")
-    }
-
-    let uniffi_packages = metadata
-        .packages
-        .iter()
-        .filter(|p| is_uniffi_package(p))
-        .collect::<Vec<_>>();
-    for package in &uniffi_packages {
-        if !package.id.repr.starts_with("git+") && !package.id.repr.starts_with("path+") {
-            anyhow::bail!("Unsupported package id: {}. We can only find Swift source code when package is integrated as a git repo or a local path.", package.id.repr)
-        }
-    }
-
-    let uniffi_packages = uniffi_packages
-        .iter()
-        .map(|p| UniffiPackage::new(p, &uniffi_packages))
-        .collect::<Vec<_>>();
-    let top_level_package = uniffi_packages
-        .iter()
-        .find(|p| {
-            !uniffi_packages
-                .iter()
-                .any(|other| other.depends_on(&p.name))
-        })
-        .unwrap();
-
-    let resolver = SPMResolver {
-        metadata: ProjectMetadata {
-            ffi_module_name,
-            cargo_metadata: metadata.clone(),
-        },
-        cargo_package_to_spm_target_map: packages,
-    };
-
-    let targets = uniffi_packages
-        .iter()
-        .map(|p| resolver.public_target(p))
-        .collect::<Result<Vec<_>>>()?;
-    let internal_targets = uniffi_packages
-        .iter()
-        .map(|p| resolver.internal_target(p))
-        .collect::<Result<Vec<_>>>()?;
-
-    let template = PackageTemplate {
-        package_name: resolver.spm_target_name(&top_level_package.name),
-        ffi_module_name: resolver.metadata.ffi_module_name.clone(),
-        project_name,
-        targets,
-        internal_targets,
-    };
-    let content = template.render()?;
-    let dest = resolver.swift_package_manifest_file_path();
-    File::create(&dest)?.write_all(content.as_bytes())?;
-
-    Command::new("swift")
-        .args(["format", "--in-place"])
-        .arg(&dest)
-        .successful_output()?;
-
-    Ok(())
-}
-
-fn is_uniffi_package(package: &Package) -> bool {
-    let depends_on_uniffi = package
-        .dependencies
-        .iter()
-        .any(|d| d.name == "uniffi" && !d.optional && d.kind == DependencyKind::Normal);
-    let has_uniffi_toml = package.manifest_path.with_file_name("uniffi.toml").exists();
-    depends_on_uniffi && has_uniffi_toml
-}
-
-impl UniffiPackage {
-    fn new(package: &Package, all_uniffi_packages: &Vec<&Package>) -> Self {
-        let dependencies: Vec<_> = package
-            .dependencies
-            .iter()
-            .filter_map(|d| {
-                all_uniffi_packages
-                    .iter()
-                    .find(|p| p.name == d.name)
-                    .map(|p| Self::new(p, all_uniffi_packages))
-            })
-            .collect();
-
-        UniffiPackage {
-            name: package.name.clone(),
-            manifest_path: package.manifest_path.clone(),
-            dependencies,
-        }
-    }
-
-    fn depends_on(&self, other: &str) -> bool {
-        self.dependencies.iter().any(|d| d.name == other)
-    }
-
-    fn swift_wrapper_file_name(&self) -> String {
-        format!("{}.swift", self.name)
-    }
-}
-
-struct ProjectMetadata {
-    ffi_module_name: String,
-    cargo_metadata: Metadata,
-}
-
-impl ProjectMetadata {
-    fn swift_wrapper_dir(&self) -> Utf8PathBuf {
-        self.cargo_metadata
-            .target_directory
-            .join(&self.ffi_module_name)
-            .join("swift-wrapper")
-    }
-}
-
-struct SPMResolver {
-    metadata: ProjectMetadata,
-    cargo_package_to_spm_target_map: HashMap<String, String>,
+pub struct SPMResolver {
+    pub project: Project,
+    pub cargo_package_to_spm_target_map: HashMap<String, String>,
 }
 
 impl SPMResolver {
+    pub fn generate_swift_package(&self, project_name: String) -> Result<()> {
+        let top_level_package = self.project.uniffi_package()?;
+
+        let targets = top_level_package
+            .iter()
+            .map(|p| self.public_target(p))
+            .collect::<Result<Vec<_>>>()?;
+        let internal_targets = top_level_package
+            .iter()
+            .map(|p| self.internal_target(p))
+            .collect::<Result<Vec<_>>>()?;
+
+        let template = PackageTemplate {
+            package_name: self.spm_target_name(&top_level_package.name),
+            ffi_module_name: self.project.ffi_module_name.clone(),
+            project_name,
+            targets,
+            internal_targets,
+        };
+        let content = template.render()?;
+        let dest = self.swift_package_manifest_file_path();
+        File::create(&dest)?.write_all(content.as_bytes())?;
+
+        Command::new("swift")
+            .args(["format", "--in-place"])
+            .arg(&dest)
+            .successful_output()?;
+
+        Ok(())
+    }
+
     fn swift_package_manifest_file_path(&self) -> Utf8PathBuf {
-        self.metadata
+        self.project
             .cargo_metadata
             .workspace_root
             .join("Package.swift")
@@ -235,7 +122,7 @@ impl SPMResolver {
     }
 
     fn internal_target(&self, package: &UniffiPackage) -> Result<InternalTarget> {
-        let swift_wrapper_dir = self.metadata.swift_wrapper_dir();
+        let swift_wrapper_dir = self.project.swift_wrapper_dir();
         let source_file_name = package.swift_wrapper_file_name();
         let binding_file = swift_wrapper_dir.join(&source_file_name);
         if !binding_file.exists() {
@@ -253,9 +140,9 @@ impl SPMResolver {
 
         Ok(InternalTarget {
             name: self.internal_target_name(package),
-            swift_wrapper_dir: relative_path(
+            swift_wrapper_dir: fs::relative_path(
                 swift_wrapper_dir,
-                &self.metadata.cargo_metadata.workspace_root,
+                &self.project.cargo_metadata.workspace_root,
             ),
             source_file: source_file_name,
             dependencies,
@@ -270,9 +157,9 @@ impl SPMResolver {
         let sources_dir = get_only_subdir(swift_code_dir.join("Sources"))?;
         let tests_dir = get_only_subdir(swift_code_dir.join("Tests"))?;
 
-        let root_dir = &self.metadata.cargo_metadata.workspace_root;
-        let library_source_path = relative_path(&sources_dir, root_dir);
-        let test_source_path = relative_path(&tests_dir, root_dir);
+        let root_dir = &self.project.cargo_metadata.workspace_root;
+        let library_source_path = fs::relative_path(&sources_dir, root_dir);
+        let test_source_path = fs::relative_path(&tests_dir, root_dir);
 
         let dependencies = package
             .dependencies
@@ -290,7 +177,7 @@ impl SPMResolver {
     }
 
     fn vend_swift_source_code(&self, package: &UniffiPackage) -> Result<Utf8PathBuf> {
-        let root_dir = &self.metadata.cargo_metadata.workspace_root;
+        let root_dir = &self.project.cargo_metadata.workspace_root;
         if !root_dir.is_absolute() {
             anyhow::bail!(
                 "Cargo workspace root dir is not an absolute path: {}",

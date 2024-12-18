@@ -39,7 +39,7 @@ impl BuildExtensions for Project {
                 .collect()
         };
 
-        for target_dir in target_dirs {
+        for target_dir in &target_dirs {
             let libraries = target_dir.files_with_extension("a")?;
             if libraries.len() != 1 {
                 anyhow::bail!("Expected 1 library in target dir, found {:?}", libraries)
@@ -50,7 +50,22 @@ impl BuildExtensions for Project {
 
         if apple_platforms.is_empty() {
             // TODO: Linux
-            unimplemented!("Not implemented for Linux yet")
+            let mut static_lib = target_dirs[0].files_with_extension("a")?;
+            if static_lib.len() != 1 {
+                anyhow::bail!("Expected 1 static library, found {:?}", static_lib)
+            }
+            let static_lib = static_lib.pop().unwrap();
+
+            let headers_dir = target_dirs[0].join("swift-bindings/Headers");
+            if !headers_dir.exists() {
+                anyhow::bail!("Headers directory not found: {}", &headers_dir)
+            }
+
+            let linux_library_dir = self.linux_library_path()?;
+            fs::copy_dir(&headers_dir, &linux_library_dir)?;
+
+            let static_lib_dest = linux_library_dir.join(format!("{}.a", self.ffi_module_name()?));
+            std::fs::copy(&static_lib, &static_lib_dest)?;
         } else {
             crate::xcframework::create_xcframework(
                 self.cargo_metadata.target_directory.as_std_path(),

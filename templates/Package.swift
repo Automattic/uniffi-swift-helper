@@ -15,13 +15,14 @@ let testTargetName = "\(packageName)Tests"
 // Source code paths
 let ffiSwiftWrapperSourcePath = "target/\(ffiModuleName)/swift-wrapper"
 let ffiXCFrameworkPath = "target/\(ffiModuleName)/\(ffiModuleName).xcframework"
+let ffiLinuxLibraryPath = "target/\(ffiModuleName)/linux"
 
 let ffiVersion: FFIVersion = .local
 
 #if os(Linux)
 let ffiTarget: Target = .systemLibrary(
         name: ffiModuleName,
-        path: "target/release/\(ffiModuleName)-linux/"
+        path: ffiLinuxLibraryPath
     )
 #elseif os(macOS)
 let ffiTarget: Target = ffiVersion.target

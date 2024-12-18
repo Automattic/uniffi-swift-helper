@@ -86,6 +86,15 @@ impl Project {
         self.package.ffi_module_name()
     }
 
+    pub fn linux_library_path(&self) -> Result<Utf8PathBuf> {
+        let ffi_module_name = self.ffi_module_name()?;
+        Ok(self
+            .cargo_metadata
+            .target_directory
+            .join(&ffi_module_name)
+            .join("linux"))
+    }
+
     pub fn xcframework_path(&self) -> Result<Utf8PathBuf> {
         let ffi_module_name = self.ffi_module_name()?;
         Ok(self

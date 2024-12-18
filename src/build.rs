@@ -25,14 +25,14 @@ impl BuildExtensions for Project {
             )
         }
 
-        let package = self.uniffi_package()?.name;
+        let package = &self.package.name;
 
         let target_dirs: Vec<_> = if apple_platforms.is_empty() {
-            self.build_uniffi_package(&package, &profile, None)?
+            self.build_uniffi_package(package, &profile, None)?
         } else {
             apple_platforms
                 .iter()
-                .map(|platform| self.build_uniffi_package(&package, &profile, Some(*platform)))
+                .map(|platform| self.build_uniffi_package(package, &profile, Some(*platform)))
                 .collect::<Result<Vec<_>>>()?
                 .into_iter()
                 .flatten()
@@ -60,9 +60,9 @@ impl BuildExtensions for Project {
                     .map(|s| s.to_string())
                     .collect(),
                 profile.to_string(),
-                &self.ffi_module_name,
-                self.xcframework_path().as_std_path(),
-                self.swift_wrapper_dir().as_std_path(),
+                &self.ffi_module_name()?,
+                self.xcframework_path()?.as_std_path(),
+                self.swift_wrapper_dir()?.as_std_path(),
             )
         }
     }
@@ -178,7 +178,7 @@ impl Project {
         }
 
         let template = ModuleMapTemplate {
-            ffi_module_name: self.ffi_module_name.clone(),
+            ffi_module_name: self.ffi_module_name()?,
             header_files,
         };
         let content = template.render()?;
@@ -198,7 +198,7 @@ impl Project {
             ffi_module_name: String,
         }
         let prefix = PrefixTemplate {
-            ffi_module_name: self.ffi_module_name.clone(),
+            ffi_module_name: self.ffi_module_name()?,
         }
         .render()?;
 

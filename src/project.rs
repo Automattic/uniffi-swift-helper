@@ -1,13 +1,16 @@
+use std::str::FromStr;
+
 use anyhow::{Context, Result};
 use cargo_metadata::{camino::Utf8PathBuf, DependencyKind, Metadata, MetadataCommand, Package};
+use toml::Table;
 
 pub struct Project {
-    pub ffi_module_name: String,
+    pub package: UniffiPackage,
     pub cargo_metadata: Metadata,
 }
 
 impl Project {
-    pub fn new(ffi_module_name: String) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let cargo_metadata = MetadataCommand::new()
             .exec()
             .with_context(|| "Can't get cargo metadata")?;
@@ -17,12 +20,12 @@ impl Project {
         }
 
         Ok(Self {
-            ffi_module_name,
+            package: Self::uniffi_package(&cargo_metadata)?,
             cargo_metadata,
         })
     }
 
-    pub fn uniffi_package(&self) -> Result<UniffiPackage> {
+    fn uniffi_package(metadata: &Metadata) -> Result<UniffiPackage> {
         let is_uniffi_package = |package: &Package| {
             let depends_on_uniffi = package
                 .dependencies
@@ -31,8 +34,7 @@ impl Project {
             let has_uniffi_toml = package.manifest_path.with_file_name("uniffi.toml").exists();
             depends_on_uniffi && has_uniffi_toml
         };
-        let uniffi_packages = self
-            .cargo_metadata
+        let uniffi_packages = metadata
             .packages
             .iter()
             .filter(|p| is_uniffi_package(p))
@@ -72,18 +74,25 @@ impl Project {
         Ok(uniffi_packages.remove(index))
     }
 
-    pub fn xcframework_path(&self) -> Utf8PathBuf {
-        self.cargo_metadata
-            .target_directory
-            .join(&self.ffi_module_name)
-            .join(format!("{}.xcframework", &self.ffi_module_name))
+    pub fn ffi_module_name(&self) -> Result<String> {
+        self.package.ffi_module_name()
     }
 
-    pub fn swift_wrapper_dir(&self) -> Utf8PathBuf {
-        self.cargo_metadata
+    pub fn xcframework_path(&self) -> Result<Utf8PathBuf> {
+        let ffi_module_name = self.ffi_module_name()?;
+        Ok(self
+            .cargo_metadata
             .target_directory
-            .join(&self.ffi_module_name)
-            .join("swift-wrapper")
+            .join(&ffi_module_name)
+            .join(format!("{}.xcframework", &ffi_module_name)))
+    }
+
+    pub fn swift_wrapper_dir(&self) -> Result<Utf8PathBuf> {
+        Ok(self
+            .cargo_metadata
+            .target_directory
+            .join(self.ffi_module_name()?)
+            .join("swift-wrapper"))
     }
 }
 
@@ -136,5 +145,33 @@ impl UniffiPackage {
         }
 
         result.into_iter()
+    }
+
+    pub fn ffi_module_name(&self) -> Result<String> {
+        self.uniffi_toml()?
+            .get("bindings")
+            .and_then(|t| t.get("swift"))
+            .and_then(|t| t.get("ffi_module_name"))
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .context(format!(
+                "ffi_module_name not found in the uniffi.toml of package {}",
+                self.name
+            ))
+    }
+
+    fn uniffi_toml(&self) -> Result<Table> {
+        let uniffi_toml_path = self.manifest_path.with_file_name("uniffi.toml");
+        let content = std::fs::read(uniffi_toml_path)
+            .with_context(|| format!("Can't read the uniffi.toml of package {}", self.name))?;
+        let str = String::from_utf8(content).with_context(|| {
+            format!(
+                "The uniffi.toml of package {} is not uft-8 encoded",
+                self.name
+            )
+        })?;
+        let table = Table::from_str(&str)
+            .with_context(|| format!("The uniffi.toml of package {} is invalid", self.name))?;
+        Ok(table)
     }
 }

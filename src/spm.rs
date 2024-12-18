@@ -89,7 +89,7 @@ pub struct SPMResolver {
 
 impl SPMResolver {
     pub fn generate_swift_package(&self, project_name: String) -> Result<()> {
-        let top_level_package = self.project.uniffi_package()?;
+        let top_level_package = &self.project.package;
 
         let targets = top_level_package
             .iter()
@@ -102,7 +102,7 @@ impl SPMResolver {
 
         let template = PackageTemplate {
             package_name: self.spm_target_name(&top_level_package.name),
-            ffi_module_name: self.project.ffi_module_name.clone(),
+            ffi_module_name: self.project.ffi_module_name()?,
             project_name,
             targets,
             internal_targets,
@@ -151,7 +151,7 @@ impl SPMResolver {
     }
 
     fn internal_target(&self, package: &UniffiPackage) -> Result<InternalTarget> {
-        let swift_wrapper_dir = self.project.swift_wrapper_dir();
+        let swift_wrapper_dir = self.project.swift_wrapper_dir()?;
         let source_file_name = package.swift_wrapper_file_name();
         let binding_file = swift_wrapper_dir.join(&source_file_name);
         if !binding_file.exists() {

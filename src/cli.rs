@@ -29,14 +29,10 @@ struct BuildArgs {
     only_macos: bool,
     #[arg(long)]
     profile: String,
-    #[arg(long)]
-    ffi_module_name: String,
 }
 
 #[derive(Parser)]
 struct GeneratePackageArgs {
-    #[arg(long)]
-    ffi_module_name: String,
     #[arg(long)]
     project_name: String,
     #[arg(long)]
@@ -64,7 +60,7 @@ fn build(args: BuildArgs) -> Result<()> {
         vec![]
     };
 
-    let project = Project::new(args.ffi_module_name)?;
+    let project = Project::new()?;
     project.build(args.profile, apple_platforms)
 }
 
@@ -81,7 +77,7 @@ fn generate_package(args: GeneratePackageArgs) -> Result<()> {
         .collect::<HashMap<String, String>>();
 
     let resolver = SPMResolver {
-        project: Project::new(args.ffi_module_name)?,
+        project: Project::new()?,
         cargo_package_to_spm_target_map: map,
     };
     resolver.generate_swift_package(args.project_name)

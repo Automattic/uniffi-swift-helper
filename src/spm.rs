@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
@@ -82,14 +81,13 @@ struct InternalTarget {
     dependencies: Vec<String>,
 }
 
-pub struct SPMResolver {
-    pub project: Project,
-    pub cargo_package_to_spm_target_map: HashMap<String, String>,
+pub trait SPMExtension {
+    fn generate_swift_package(&self, project_name: String) -> Result<()>;
 }
 
-impl SPMResolver {
-    pub fn generate_swift_package(&self, project_name: String) -> Result<()> {
-        let top_level_package = &self.project.package;
+impl SPMExtension for Project {
+    fn generate_swift_package(&self, project_name: String) -> Result<()> {
+        let top_level_package = &self.package;
 
         let targets = top_level_package
             .iter()
@@ -101,8 +99,8 @@ impl SPMResolver {
             .collect::<Result<Vec<_>>>()?;
 
         let template = PackageTemplate {
-            package_name: self.spm_target_name(&top_level_package.name),
-            ffi_module_name: self.project.ffi_module_name()?,
+            package_name: top_level_package.public_module_name()?,
+            ffi_module_name: self.ffi_module_name()?,
             project_name,
             targets,
             internal_targets,
@@ -122,36 +120,26 @@ impl SPMResolver {
 
         Ok(())
     }
+}
 
+impl Project {
     fn swift_package_manifest_file_path(&self) -> Utf8PathBuf {
-        self.project
-            .cargo_metadata
-            .workspace_root
-            .join("Package.swift")
+        self.cargo_metadata.workspace_root.join("Package.swift")
     }
 
-    fn spm_target_name(&self, cargo_package_name: &str) -> String {
-        self.cargo_package_to_spm_target_map
-            .get(cargo_package_name)
-            .unwrap_or_else(|| {
-                panic!(
-                    "No SPM target name specified for cargo package {}",
-                    cargo_package_name
-                )
-            })
-            .to_string()
+    fn spm_target_name(&self, cargo_package_name: &str) -> Result<String> {
+        self.package(cargo_package_name)
+            .context(format!("Can't find package {}", cargo_package_name))?
+            .public_module_name()
     }
 
-    fn public_target_name(&self, package: &UniffiPackage) -> String {
-        self.spm_target_name(&package.name)
-    }
-
-    fn internal_target_name(&self, package: &UniffiPackage) -> String {
-        format!("{}Internal", self.spm_target_name(&package.name))
+    fn internal_target_name(&self, package: &UniffiPackage) -> Result<String> {
+        let name = package.public_module_name()?;
+        Ok(format!("{}Internal", name))
     }
 
     fn internal_target(&self, package: &UniffiPackage) -> Result<InternalTarget> {
-        let swift_wrapper_dir = self.project.swift_wrapper_dir()?;
+        let swift_wrapper_dir = self.swift_wrapper_dir()?;
         let source_file_name = package.swift_wrapper_file_name();
         let binding_file = swift_wrapper_dir.join(&source_file_name);
         if !binding_file.exists() {
@@ -165,13 +153,13 @@ impl SPMResolver {
             .dependencies
             .iter()
             .map(|p| self.internal_target_name(p))
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(InternalTarget {
-            name: self.internal_target_name(package),
+            name: self.internal_target_name(package)?,
             swift_wrapper_dir: fs::relative_path(
                 swift_wrapper_dir,
-                &self.project.cargo_metadata.workspace_root,
+                &self.cargo_metadata.workspace_root,
             ),
             source_file: source_file_name,
             dependencies,
@@ -186,7 +174,7 @@ impl SPMResolver {
         let sources_dir = get_only_subdir(swift_code_dir.join("Sources"))?;
         let tests_dir = get_only_subdir(swift_code_dir.join("Tests"))?;
 
-        let root_dir = &self.project.cargo_metadata.workspace_root;
+        let root_dir = &self.cargo_metadata.workspace_root;
         let library_source_path = fs::relative_path(&sources_dir, root_dir);
         let test_source_path = fs::relative_path(&tests_dir, root_dir);
 
@@ -194,10 +182,10 @@ impl SPMResolver {
             .dependencies
             .iter()
             .map(|p| self.spm_target_name(&p.name))
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(Target {
-            name: self.public_target_name(package),
+            name: package.public_module_name()?,
             library_source_path,
             test_source_path,
             dependencies,
@@ -206,7 +194,7 @@ impl SPMResolver {
     }
 
     fn vend_swift_source_code(&self, package: &UniffiPackage) -> Result<Utf8PathBuf> {
-        let root_dir = &self.project.cargo_metadata.workspace_root;
+        let root_dir = &self.cargo_metadata.workspace_root;
         if !root_dir.is_absolute() {
             anyhow::bail!(
                 "Cargo workspace root dir is not an absolute path: {}",

@@ -74,6 +74,14 @@ impl Project {
         Ok(uniffi_packages.remove(index))
     }
 
+    pub fn packages_iter(&self) -> impl Iterator<Item = &UniffiPackage> {
+        self.package.iter()
+    }
+
+    pub fn package(&self, name: &str) -> Option<&UniffiPackage> {
+        self.packages_iter().find(|p| p.name == name)
+    }
+
     pub fn ffi_module_name(&self) -> Result<String> {
         self.package.ffi_module_name()
     }
@@ -148,16 +156,11 @@ impl UniffiPackage {
     }
 
     pub fn ffi_module_name(&self) -> Result<String> {
-        self.uniffi_toml()?
-            .get("bindings")
-            .and_then(|t| t.get("swift"))
-            .and_then(|t| t.get("ffi_module_name"))
-            .and_then(|t| t.as_str())
-            .map(|s| s.to_string())
-            .context(format!(
-                "ffi_module_name not found in the uniffi.toml of package {}",
-                self.name
-            ))
+        self.uniffi_toml_swift_configuration("ffi_module_name")
+    }
+
+    pub fn public_module_name(&self) -> Result<String> {
+        self.uniffi_toml_swift_configuration("wp_spm_public_module_name")
     }
 
     fn uniffi_toml(&self) -> Result<Table> {
@@ -173,5 +176,18 @@ impl UniffiPackage {
         let table = Table::from_str(&str)
             .with_context(|| format!("The uniffi.toml of package {} is invalid", self.name))?;
         Ok(table)
+    }
+
+    fn uniffi_toml_swift_configuration(&self, key: &str) -> Result<String> {
+        self.uniffi_toml()?
+            .get("bindings")
+            .and_then(|t| t.get("swift"))
+            .and_then(|t| t.get(key))
+            .and_then(|t| t.as_str())
+            .map(|s| s.to_string())
+            .context(format!(
+                "{} not found in the uniffi.toml of package {}",
+                key, self.name
+            ))
     }
 }

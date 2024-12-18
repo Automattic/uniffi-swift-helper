@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 
 use anyhow::Result;
@@ -7,7 +6,7 @@ use clap::{Parser, Subcommand};
 use crate::apple_platform::ApplePlatform;
 use crate::build::BuildExtensions;
 use crate::project::Project;
-use crate::spm::SPMResolver;
+use crate::spm::*;
 
 #[derive(Parser)]
 pub(crate) struct Cli {
@@ -65,20 +64,6 @@ fn build(args: BuildArgs) -> Result<()> {
 }
 
 fn generate_package(args: GeneratePackageArgs) -> Result<()> {
-    let map = args
-        .package_name_map
-        .split(',')
-        .map(|pair| {
-            let mut iter = pair.split(':');
-            let key = iter.next().unwrap();
-            let value = iter.next().unwrap();
-            (key.to_string(), value.to_string())
-        })
-        .collect::<HashMap<String, String>>();
-
-    let resolver = SPMResolver {
-        project: Project::new()?,
-        cargo_package_to_spm_target_map: map,
-    };
-    resolver.generate_swift_package(args.project_name)
+    let project = Project::new()?;
+    project.generate_swift_package(args.project_name)
 }

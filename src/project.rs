@@ -102,6 +102,21 @@ impl Project {
             .join(self.ffi_module_name()?)
             .join("swift-wrapper"))
     }
+
+    pub fn swift_wrapper_files_iter(
+        &self,
+    ) -> impl Iterator<Item = Result<(Utf8PathBuf, &UniffiPackage)>> {
+        self.packages_iter()
+            .map(|pkg| {
+                let file_name = format!("{}.swift", pkg.name);
+                let path = self.swift_wrapper_dir()?.join(file_name);
+                if path.exists() {
+                    Ok((path, pkg))
+                } else {
+                    anyhow::bail!("Swift wrapper file {} not found. Please run the build command first", path);
+                }
+            })
+    }
 }
 
 #[derive(Debug)]
@@ -161,6 +176,10 @@ impl UniffiPackage {
 
     pub fn public_module_name(&self) -> Result<String> {
         self.uniffi_toml_swift_configuration("wp_spm_public_module_name")
+    }
+
+    pub fn internal_module_name(&self) -> Result<String> {
+        Ok(format!("{}Internal", self.public_module_name()?))
     }
 
     fn uniffi_toml(&self) -> Result<Table> {

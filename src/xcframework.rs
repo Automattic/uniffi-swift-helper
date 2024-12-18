@@ -25,6 +25,8 @@ pub fn create_xcframework(
         swift_wrapper,
     )?;
 
+    std::fs::remove_dir_all(&temp_dir).ok();
+
     Ok(())
 }
 

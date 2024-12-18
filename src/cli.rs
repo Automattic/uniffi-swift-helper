@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::apple_platform::ApplePlatform;
-use crate::build::BuildExtensions;
+use crate::build::*;
 use crate::project::Project;
 use crate::spm::*;
 
@@ -34,8 +34,6 @@ struct BuildArgs {
 struct GeneratePackageArgs {
     #[arg(long)]
     project_name: String,
-    #[arg(long)]
-    package_name_map: String,
 }
 
 impl Cli {

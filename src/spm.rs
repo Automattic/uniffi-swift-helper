@@ -133,11 +133,6 @@ impl Project {
             .public_module_name()
     }
 
-    fn internal_target_name(&self, package: &UniffiPackage) -> Result<String> {
-        let name = package.public_module_name()?;
-        Ok(format!("{}Internal", name))
-    }
-
     fn internal_target(&self, package: &UniffiPackage) -> Result<InternalTarget> {
         let swift_wrapper_dir = self.swift_wrapper_dir()?;
         let source_file_name = package.swift_wrapper_file_name();
@@ -152,11 +147,11 @@ impl Project {
         let dependencies = package
             .dependencies
             .iter()
-            .map(|p| self.internal_target_name(p))
+            .map(|p| p.internal_module_name())
             .collect::<Result<Vec<_>>>()?;
 
         Ok(InternalTarget {
-            name: self.internal_target_name(package)?,
+            name: package.internal_module_name()?,
             swift_wrapper_dir: fs::relative_path(
                 swift_wrapper_dir,
                 &self.cargo_metadata.workspace_root,

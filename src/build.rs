@@ -6,9 +6,9 @@ use std::process::Command;
 use anyhow::Result;
 use cargo_metadata::camino::Utf8PathBuf;
 use rinja::Template;
-use tempfile::tempdir;
 use uniffi_bindgen::bindings::SwiftBindingsOptions;
 
+use crate::project::UniffiPackage;
 use crate::utils::*;
 use crate::{apple_platform::ApplePlatform, project::Project};
 
@@ -63,8 +63,12 @@ impl BuildExtensions for Project {
                 &self.ffi_module_name()?,
                 self.xcframework_path()?.as_std_path(),
                 self.swift_wrapper_dir()?.as_std_path(),
-            )
+            )?;
         }
+
+        self.update_swift_wrappers()?;
+
+        Ok(())
     }
 }
 
@@ -94,8 +98,8 @@ impl Project {
         // Include debug symbols.
         let config_debug = format!("profile.{}.debug=true", profile);
         // Abort on panic to include Rust backtrace in crash reports.
-        let panic_config = format!(r#"profile.{}.panic="abort""#, profile);
-        build.extend(["--config", &config_debug, "--config", &panic_config]);
+        let config_panic = format!(r#"profile.{}.panic="abort""#, profile);
+        build.extend(["--config", &config_debug, "--config", &config_panic]);
 
         build.extend(["build", "--package", package, "--profile", profile]);
 
@@ -115,9 +119,7 @@ impl Project {
                         anyhow::bail!("Failed to build package {} for target {}", package, target)
                     }
 
-                    let target_dir = cargo_target_dir.join(target).join(profile_dirname);
-
-                    Ok(target_dir)
+                    Ok(cargo_target_dir.join(target).join(profile_dirname))
                 })
                 .collect()
         } else {
@@ -129,8 +131,7 @@ impl Project {
                 anyhow::bail!("Failed to build package {}", package)
             }
 
-            let target_dir = cargo_target_dir.join(profile_dirname);
-            Ok(vec![target_dir])
+            Ok(vec![cargo_target_dir.join(profile_dirname)])
         }
     }
 
@@ -152,7 +153,6 @@ impl Project {
         uniffi_bindgen::bindings::generate_swift_bindings(options)?;
 
         self.reorganize_binding_files(&out_dir)?;
-        self.fix_swift_bindings(&out_dir)?;
 
         Ok(out_dir)
     }
@@ -188,42 +188,68 @@ impl Project {
         Ok(())
     }
 
-    fn fix_swift_bindings(&self, dir: &Path) -> Result<()> {
-        let swift_files = dir.files_with_extension("swift")?;
-        let tempdir = tempdir()?;
-
-        #[derive(Template)]
-        #[template(path = "binding-prefix.swift", escape = "none")]
-        struct PrefixTemplate {
-            ffi_module_name: String,
-        }
-        let prefix = PrefixTemplate {
-            ffi_module_name: self.ffi_module_name()?,
-        }
-        .render()?;
-
-        for path in swift_files {
-            let reader = BufReader::new(File::open(&path)?);
-            let tempfile_path = tempdir.path().join("temp.swift");
-            let mut tempfile = File::create(&tempfile_path)?;
-
-            writeln!(tempfile, "{}\n", prefix)?;
-
-            for line in reader.lines() {
-                let mut line = line?;
-                if line == "protocol UniffiForeignFutureTask {" {
-                    line = "fileprivate protocol UniffiForeignFutureTask {".to_string()
-                }
-
-                writeln!(tempfile, "{}", line)?;
-            }
-
-            tempfile.sync_all()?;
-            std::mem::drop(tempfile);
-
-            std::fs::rename(tempfile_path, path)?
+    fn update_swift_wrappers(&self) -> Result<()> {
+        for item in self.swift_wrapper_files_iter() {
+            let (path, package) = item?;
+            self.update_swift_wrapper(path, package)?;
         }
 
         Ok(())
     }
+
+    fn update_swift_wrapper(&self, path: Utf8PathBuf, package: &UniffiPackage) -> Result<()> {
+        let tempdir = self.cargo_metadata.target_directory.join("tmp");
+        if !tempdir.exists() {
+            std::fs::create_dir(&tempdir)?;
+        }
+
+        let tempfile_path = tempdir.join("temp.swift");
+        if tempfile_path.exists() {
+            std::fs::remove_file(&tempfile_path)?;
+        }
+
+        let mut tempfile = File::create_new(&tempfile_path)?;
+
+        let content = self.swift_wrapper_prefix(package)?;
+        writeln!(tempfile, "{}\n", content)?;
+
+        let original = BufReader::new(File::open(&path)?);
+        for line in original.lines() {
+            let mut line = line?;
+            if line == "protocol UniffiForeignFutureTask {" {
+                line = "fileprivate protocol UniffiForeignFutureTask {".to_string()
+            }
+
+            writeln!(tempfile, "{}", line)?;
+        }
+
+        tempfile.sync_all()?;
+        std::mem::drop(tempfile);
+
+        std::fs::rename(tempfile_path, path)?;
+
+        Ok(())
+    }
+
+    fn swift_wrapper_prefix(&self, package: &UniffiPackage) -> Result<String> {
+        let mut modules_to_import: Vec<String> = vec![];
+
+        package
+            .iter()
+            .filter(|p| p.name != package.name)
+            .for_each(|p| modules_to_import.push(p.internal_module_name().unwrap()));
+
+        let project_ffi_module_name = self.ffi_module_name()?;
+        if package.ffi_module_name()? != project_ffi_module_name {
+            modules_to_import.push(project_ffi_module_name);
+        }
+
+        Ok(PrefixTemplate { modules_to_import }.render()?)
+    }
+}
+
+#[derive(Template)]
+#[template(path = "binding-prefix.swift", escape = "none")]
+struct PrefixTemplate {
+    modules_to_import: Vec<String>,
 }

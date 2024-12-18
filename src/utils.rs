@@ -50,7 +50,9 @@ pub(crate) mod fs {
 
     use super::*;
 
-    pub fn recreate_dir(dir: &Path) -> Result<()> {
+    pub fn recreate_dir<P>(dir: P) -> Result<()> where P: AsRef<Path> {
+        let dir = dir.as_ref();
+
         if dir.exists() {
             std::fs::remove_dir_all(dir)
                 .with_context(|| format!("Failed to remove directory at {:?}", dir))?;
@@ -76,7 +78,10 @@ pub(crate) mod fs {
         Ok(destination)
     }
 
-    pub fn copy_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    pub fn copy_dir<P>(src: P, dst: P) -> std::io::Result<()> where P: AsRef<Path> {
+        let src = src.as_ref();
+        let dst = dst.as_ref();
+
         if !dst.exists() {
             std::fs::create_dir_all(dst)?;
         }

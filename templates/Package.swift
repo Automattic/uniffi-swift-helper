@@ -47,10 +47,10 @@ var package = Package(
         .target(
             name: "{{ target.name }}",
             dependencies: [
-                .target(name: "{{ target.name }}Internal"),
                 {% for dep in target.dependencies %}
                 .target(name: "{{ dep }}"),
                 {% endfor %}
+                .target(name: "{{ target.name }}Internal")
             ],
             path: "{{ target.library_source_path }}",
             swiftSettings: [
@@ -63,6 +63,9 @@ var package = Package(
             .target(
                 name: "{{ target.name }}",
                 dependencies: [
+                    {% for dep in target.dependencies %}
+                    .target(name: "{{ dep }}"),
+                    {% endfor %}
                     .target(name: ffiTarget.name)
                 ],
                 path: "{{ target.swift_wrapper_dir }}",

@@ -88,5 +88,6 @@ fn generate_package(args: GeneratePackageArgs) -> Result<()> {
         .collect::<HashMap<String, String>>();
 
     // spm::generate_swift_package(&args.package, map)
-    spm::generate_swift_package(args.package, args.ffi_module_name, args.project_name, map)
+    // spm::generate_swift_package(args.package, args.ffi_module_name, args.project_name, map)
+    spm::generate_swift_package2(args.ffi_module_name, args.project_name, map)
 }

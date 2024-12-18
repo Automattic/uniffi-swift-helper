@@ -13,6 +13,26 @@ use rinja::Template;
 use crate::project::*;
 use crate::utils::{fs, ExecuteCommand};
 
+pub struct DeploymentTargets;
+
+impl DeploymentTargets {
+    pub fn ios() -> &'static str {
+        "13.0"
+    }
+
+    pub fn macos() -> &'static str {
+        "11.0"
+    }
+
+    pub fn tvos() -> &'static str {
+        "13.0"
+    }
+
+    pub fn watchos() -> &'static str {
+        "8.0"
+    }
+}
+
 #[derive(Template)]
 #[template(path = "Package.swift", escape = "none")]
 struct PackageTemplate {
@@ -21,6 +41,11 @@ struct PackageTemplate {
     project_name: String,
     targets: Vec<Target>,
     internal_targets: Vec<InternalTarget>,
+
+    ios_version: &'static str,
+    macos_version: &'static str,
+    tvos_version: &'static str,
+    watchos_version: &'static str,
 }
 
 struct Target {
@@ -81,6 +106,10 @@ impl SPMResolver {
             project_name,
             targets,
             internal_targets,
+            ios_version: DeploymentTargets::ios(),
+            macos_version: DeploymentTargets::macos(),
+            tvos_version: DeploymentTargets::tvos(),
+            watchos_version: DeploymentTargets::watchos(),
         };
         let content = template.render()?;
         let dest = self.swift_package_manifest_file_path();

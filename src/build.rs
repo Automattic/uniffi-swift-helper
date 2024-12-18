@@ -100,23 +100,13 @@ impl Project {
         build.extend(["build", "--package", package, "--profile", profile]);
 
         let cargo_target_dir = &self.cargo_metadata.target_directory;
-        let targets = platform.as_ref().map_or(vec![], |p| p.target_triples());
-        if targets.is_empty() {
-            let mut cmd = Command::new(build[0]);
-            cmd.args(&build[1..]);
-
-            println!("$ {:?}", cmd);
-            if !cmd.spawn()?.wait()?.success() {
-                anyhow::bail!("Failed to build package {}", package)
-            }
-
-            let target_dir = cargo_target_dir.join(profile_dirname);
-            Ok(vec![target_dir])
-        } else {
-            targets
+        if let Some(platform) = platform {
+            platform
+                .target_triples()
                 .into_iter()
                 .map(|target| {
                     let mut cmd = Command::new(build[0]);
+                    platform.set_deployment_target_env(&mut cmd);
                     cmd.args(&build[1..]);
                     cmd.args(["--target", target]);
 
@@ -130,6 +120,17 @@ impl Project {
                     Ok(target_dir)
                 })
                 .collect()
+        } else {
+            let mut cmd = Command::new(build[0]);
+            cmd.args(&build[1..]);
+
+            println!("$ {:?}", cmd);
+            if !cmd.spawn()?.wait()?.success() {
+                anyhow::bail!("Failed to build package {}", package)
+            }
+
+            let target_dir = cargo_target_dir.join(profile_dirname);
+            Ok(vec![target_dir])
         }
     }
 

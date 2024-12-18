@@ -1,4 +1,6 @@
-use std::fmt::Display;
+use std::{fmt::Display, process::Command};
+
+use crate::spm::DeploymentTargets;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum ApplePlatform {
@@ -33,6 +35,20 @@ impl ApplePlatform {
 
     pub fn requires_nightly_toolchain(&self) -> bool {
         matches!(self, Self::TvOS | Self::WatchOS)
+    }
+
+    pub fn set_deployment_target_env(&self, command: &mut Command) {
+        let (key, value) = self.deployment_targets_env();
+        command.env(key, value);
+    }
+
+    fn deployment_targets_env(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::IOS => ("IOS_DEPLOYMENT_TARGET", DeploymentTargets::ios()),
+            Self::MacOS => ("MACOSX_DEPLOYMENT_TARGET", DeploymentTargets::macos()),
+            Self::TvOS => ("TVOS_DEPLOYMENT_TARGET", DeploymentTargets::tvos()),
+            Self::WatchOS => ("WATCHOS_DEPLOYMENT_TARGET", DeploymentTargets::watchos()),
+        }
     }
 }
 

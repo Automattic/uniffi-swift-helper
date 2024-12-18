@@ -30,10 +30,10 @@ let ffiTarget: Target = ffiVersion.target
 var package = Package(
     name: packageName,
     platforms: [
-        .iOS(.v13),
-        .macOS(.v11),
-        .tvOS(.v13),
-        .watchOS(.v8)
+        .iOS("{{ ios_version }}"),
+        .macOS("{{ macos_version }}"),
+        .tvOS("{{ tvos_version }}"),
+        .watchOS("{{ watchos_version }}"),
     ],
     products: [
         .library(

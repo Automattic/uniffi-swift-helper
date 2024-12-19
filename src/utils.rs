@@ -107,6 +107,23 @@ pub(crate) mod fs {
         Ok(())
     }
 
+    pub fn read_only_files<P: AsRef<Path>>(path: P) -> Result<()> {
+        for entry in std::fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                read_only_files(&path)?;
+                continue;
+            }
+
+            let mut permissions = std::fs::metadata(&path)?.permissions();
+            permissions.set_readonly(true);
+            std::fs::set_permissions(&path, permissions)?;
+        }
+
+        Ok(())
+    }
+
     pub fn relative_path<P, B>(path: P, base: B) -> String
     where
         P: AsRef<Path>,

@@ -245,6 +245,7 @@ impl Project {
         println!("  - to: {}", new_path);
 
         fs::copy_dir(&swift_code_dir, &new_path)?;
+        fs::read_only_files(&new_path)?;
 
         swift_code_dir = new_path;
 

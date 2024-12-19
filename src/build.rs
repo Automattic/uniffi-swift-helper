@@ -46,7 +46,7 @@ impl BuildExtensions for Project {
             target.build_uniffi_package()?;
             target.generate_bindings(
                 &self.cargo_metadata.target_directory,
-                self.ffi_module_name()?,
+                &self.ffi_module_name,
             )?;
         }
 
@@ -62,9 +62,9 @@ impl BuildExtensions for Project {
                     .map(|s| s.to_string())
                     .collect(),
                 profile,
-                &self.ffi_module_name()?,
-                self.xcframework_path()?.as_std_path(),
-                self.swift_wrapper_dir()?.as_std_path(),
+                &self.ffi_module_name,
+                self.xcframework_path().as_std_path(),
+                self.swift_wrapper_dir().as_std_path(),
             )?;
         }
 
@@ -76,8 +76,7 @@ impl BuildExtensions for Project {
 
 impl Project {
     fn update_swift_wrappers(&self) -> Result<()> {
-        for item in self.swift_wrapper_files_iter() {
-            let (path, package) = item?;
+        for (path, package) in self.swift_wrapper_files_iter() {
             self.update_swift_wrapper(path, package)?;
         }
 
@@ -126,7 +125,7 @@ impl Project {
             .filter(|p| p.name != package.name)
             .for_each(|p| modules_to_import.push(p.internal_module_name().unwrap()));
 
-        let project_ffi_module_name = self.ffi_module_name()?;
+        let project_ffi_module_name = self.ffi_module_name.clone();
         if package.ffi_module_name()? != project_ffi_module_name {
             modules_to_import.push(project_ffi_module_name);
         }
@@ -146,10 +145,10 @@ impl Project {
             anyhow::bail!("Headers directory not found: {}", &headers_dir)
         }
 
-        let linux_library_dir = self.linux_library_path()?;
+        let linux_library_dir = self.linux_library_path();
         fs::copy_dir(&headers_dir, &linux_library_dir)?;
 
-        let static_lib_dest = linux_library_dir.join(format!("{}.a", self.ffi_module_name()?));
+        let static_lib_dest = linux_library_dir.join(format!("{}.a", self.ffi_module_name));
         std::fs::copy(&static_lib, &static_lib_dest)?;
 
         Ok(())
@@ -233,7 +232,7 @@ impl PlatformTarget {
     fn generate_bindings(
         &self,
         cargo_target_dir: &Utf8PathBuf,
-        ffi_module_name: String,
+        ffi_module_name: &str,
     ) -> Result<()> {
         for target_dir in self.built_dirs(cargo_target_dir) {
             let libraries = target_dir.files_with_extension("a")?;
@@ -258,7 +257,7 @@ impl PlatformTarget {
             };
             uniffi_bindgen::bindings::generate_swift_bindings(options)?;
 
-            self.reorganize_binding_files(&out_dir, ffi_module_name.clone())?;
+            self.reorganize_binding_files(&out_dir, ffi_module_name.to_string())?;
         }
 
         Ok(())

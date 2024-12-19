@@ -100,7 +100,7 @@ impl SPMExtension for Project {
 
         let template = PackageTemplate {
             package_name: top_level_package.public_module_name()?,
-            ffi_module_name: self.ffi_module_name()?,
+            ffi_module_name: self.ffi_module_name.clone(),
             project_name,
             targets,
             internal_targets,
@@ -134,7 +134,7 @@ impl Project {
     }
 
     fn internal_target(&self, package: &UniffiPackage) -> Result<InternalTarget> {
-        let swift_wrapper_dir = self.swift_wrapper_dir()?;
+        let swift_wrapper_dir = self.swift_wrapper_dir();
         let source_file_name = package.swift_wrapper_file_name();
         let binding_file = swift_wrapper_dir.join(&source_file_name);
         if !binding_file.exists() {

@@ -6,6 +6,7 @@ use toml::Table;
 
 pub struct Project {
     pub package: UniffiPackage,
+    pub ffi_module_name: String,
     pub cargo_metadata: Metadata,
 }
 
@@ -19,8 +20,12 @@ impl Project {
             anyhow::bail!("The current directory is not the cargo root directory")
         }
 
+        let package = Self::uniffi_package(&cargo_metadata)?;
+        let ffi_module_name = package.ffi_module_name()?;
+
         Ok(Self {
-            package: Self::uniffi_package(&cargo_metadata)?,
+            package,
+            ffi_module_name,
             cargo_metadata,
         })
     }
@@ -82,49 +87,35 @@ impl Project {
         self.packages_iter().find(|p| p.name == name)
     }
 
-    pub fn ffi_module_name(&self) -> Result<String> {
-        self.package.ffi_module_name()
+    pub fn linux_library_path(&self) -> Utf8PathBuf {
+        self.cargo_metadata
+            .target_directory
+            .join(&self.ffi_module_name)
+            .join("linux")
     }
 
-    pub fn linux_library_path(&self) -> Result<Utf8PathBuf> {
-        let ffi_module_name = self.ffi_module_name()?;
-        Ok(self
-            .cargo_metadata
+    pub fn xcframework_path(&self) -> Utf8PathBuf {
+        self.cargo_metadata
             .target_directory
-            .join(&ffi_module_name)
-            .join("linux"))
+            .join(&self.ffi_module_name)
+            .join(format!("{}.xcframework", &self.ffi_module_name))
     }
 
-    pub fn xcframework_path(&self) -> Result<Utf8PathBuf> {
-        let ffi_module_name = self.ffi_module_name()?;
-        Ok(self
-            .cargo_metadata
+    pub fn swift_wrapper_dir(&self) -> Utf8PathBuf {
+        self.cargo_metadata
             .target_directory
-            .join(&ffi_module_name)
-            .join(format!("{}.xcframework", &ffi_module_name)))
-    }
-
-    pub fn swift_wrapper_dir(&self) -> Result<Utf8PathBuf> {
-        Ok(self
-            .cargo_metadata
-            .target_directory
-            .join(self.ffi_module_name()?)
-            .join("swift-wrapper"))
+            .join(&self.ffi_module_name)
+            .join("swift-wrapper")
     }
 
     pub fn swift_wrapper_files_iter(
         &self,
-    ) -> impl Iterator<Item = Result<(Utf8PathBuf, &UniffiPackage)>> {
-        self.packages_iter()
-            .map(|pkg| {
-                let file_name = format!("{}.swift", pkg.name);
-                let path = self.swift_wrapper_dir()?.join(file_name);
-                if path.exists() {
-                    Ok((path, pkg))
-                } else {
-                    anyhow::bail!("Swift wrapper file {} not found. Please run the build command first", path);
-                }
-            })
+    ) -> impl Iterator<Item = (Utf8PathBuf, &UniffiPackage)> {
+        self.packages_iter().map(|pkg| {
+            let file_name = format!("{}.swift", pkg.name);
+            let path = self.swift_wrapper_dir().join(file_name);
+            (path, pkg)
+        })
     }
 }
 

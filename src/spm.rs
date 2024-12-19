@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     fs::File,
     io::Write,
     path::{Path, PathBuf},
@@ -10,7 +11,7 @@ use cargo_metadata::{camino::Utf8PathBuf, MetadataCommand};
 use rinja::Template;
 
 use crate::project::*;
-use crate::utils::{fs, ExecuteCommand};
+use crate::utils::*;
 
 pub struct DeploymentTargets;
 
@@ -78,6 +79,7 @@ struct InternalTarget {
     name: String,
     swift_wrapper_dir: String,
     source_file: String,
+    excluded_source_files: Vec<String>,
     dependencies: Vec<String>,
 }
 
@@ -144,6 +146,13 @@ impl Project {
             )
         }
 
+        let excluded_source_files = swift_wrapper_dir
+            .files_with_extension("swift")?
+            .iter()
+            .filter(|f| f.file_name() != Some(OsStr::new(&source_file_name)))
+            .map(|f| f.file_name().unwrap().to_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+
         let dependencies = package
             .dependencies
             .iter()
@@ -153,10 +162,11 @@ impl Project {
         Ok(InternalTarget {
             name: package.internal_module_name()?,
             swift_wrapper_dir: fs::relative_path(
-                swift_wrapper_dir,
+                &swift_wrapper_dir,
                 &self.cargo_metadata.workspace_root,
             ),
-            source_file: source_file_name,
+            source_file: source_file_name.clone(),
+            excluded_source_files,
             dependencies,
         })
     }

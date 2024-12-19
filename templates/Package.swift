@@ -70,6 +70,13 @@ var package = Package(
                     .target(name: ffiTarget.name)
                 ],
                 path: "{{ target.swift_wrapper_dir }}",
+                {% if !target.excluded_source_files.is_empty() %}
+                exclude: [
+                    {% for file in target.excluded_source_files %}
+                    "{{ file }}",
+                    {% endfor %}
+                ],
+                {% endif %}
                 sources: ["{{ target.source_file }}"],
                 swiftSettings: [
                     .swiftLanguageMode(.v5)

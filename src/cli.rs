@@ -58,7 +58,7 @@ fn build(args: BuildArgs) -> Result<()> {
     };
 
     let project = Project::new()?;
-    project.build(args.profile, apple_platforms)
+    project.build(args.profile.try_into()?, apple_platforms)
 }
 
 fn generate_package(args: GeneratePackageArgs) -> Result<()> {

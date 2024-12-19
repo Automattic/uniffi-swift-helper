@@ -5,19 +5,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::apple_platform::ApplePlatform;
+use crate::build::CargoProfile;
 use crate::utils::*;
 
 pub fn create_xcframework(
     cargo_target_dir: &Path,
     targets: Vec<String>,
-    profile: String,
+    profile: CargoProfile,
     name: &str,
     xcframework: &Path,
     swift_wrapper: &Path,
 ) -> Result<()> {
     let temp_dir = cargo_target_dir.join("tmp/wp-rs-xcframework");
     fs::recreate_dir(&temp_dir)?;
-    XCFramework::new(&targets, &profile)?.create(
+    XCFramework::new(&targets, profile)?.create(
         cargo_target_dir,
         name,
         &temp_dir,
@@ -48,11 +49,11 @@ struct LibraryGroup {
 // Represent a thin static library which is built with `cargo build --target <target> --profile <profile>`
 struct Slice {
     target: String,
-    profile: String,
+    profile: CargoProfile,
 }
 
 impl XCFramework {
-    fn new(targets: &Vec<String>, profile: &str) -> Result<Self> {
+    fn new(targets: &Vec<String>, profile: CargoProfile) -> Result<Self> {
         let mut groups = HashMap::<LibraryGroupId, LibraryGroup>::new();
         for target in targets {
             let id = LibraryGroupId::from_target(target)?;
@@ -276,14 +277,7 @@ impl Slice {
 
     /// Returns the directory where the built static libraries are located.
     fn built_product_dir(&self, cargo_target_dir: &Path) -> PathBuf {
-        let mut target_dir: PathBuf = cargo_target_dir.join(&self.target);
-        if self.profile == "dev" {
-            target_dir.push("debug");
-        } else {
-            target_dir.push(&self.profile);
-        }
-
-        target_dir
+        cargo_target_dir.join(&self.target).join(self.profile.dir_name())
     }
 
     fn built_libraries(&self, cargo_target_dir: &Path) -> Result<Vec<PathBuf>> {

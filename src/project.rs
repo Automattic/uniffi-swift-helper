@@ -108,9 +108,7 @@ impl Project {
             .join("swift-wrapper")
     }
 
-    pub fn swift_wrapper_files_iter(
-        &self,
-    ) -> impl Iterator<Item = (Utf8PathBuf, &UniffiPackage)> {
+    pub fn swift_wrapper_files_iter(&self) -> impl Iterator<Item = (Utf8PathBuf, &UniffiPackage)> {
         self.packages_iter().map(|pkg| {
             let file_name = format!("{}.swift", pkg.name);
             let path = self.swift_wrapper_dir().join(file_name);

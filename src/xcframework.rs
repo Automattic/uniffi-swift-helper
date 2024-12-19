@@ -277,7 +277,9 @@ impl Slice {
 
     /// Returns the directory where the built static libraries are located.
     fn built_product_dir(&self, cargo_target_dir: &Path) -> PathBuf {
-        cargo_target_dir.join(&self.target).join(self.profile.dir_name())
+        cargo_target_dir
+            .join(&self.target)
+            .join(self.profile.dir_name())
     }
 
     fn built_libraries(&self, cargo_target_dir: &Path) -> Result<Vec<PathBuf>> {

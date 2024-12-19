@@ -33,7 +33,10 @@ pub(crate) trait FileSystemExtensions {
     fn files_with_extension(&self, ext: &str) -> Result<Vec<PathBuf>>;
 }
 
-impl<T> FileSystemExtensions for T where T: AsRef<Path> {
+impl<T> FileSystemExtensions for T
+where
+    T: AsRef<Path>,
+{
     fn files_with_extension(&self, ext: &str) -> Result<Vec<PathBuf>> {
         let files = std::fs::read_dir(self)?
             .filter_map(|f| f.ok())

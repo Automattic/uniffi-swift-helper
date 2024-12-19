@@ -44,10 +44,8 @@ impl BuildExtensions for Project {
         };
         for target in &targets {
             target.build_uniffi_package()?;
-            target.generate_bindings(
-                &self.cargo_metadata.target_directory,
-                &self.ffi_module_name,
-            )?;
+            target
+                .generate_bindings(&self.cargo_metadata.target_directory, &self.ffi_module_name)?;
         }
 
         if apple_platforms.is_empty() {

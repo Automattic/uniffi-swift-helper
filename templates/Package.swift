@@ -44,13 +44,13 @@ var package = Package(
     ],
     dependencies: [],
     targets: [
-        {% for target in targets %}
+        {%- for target in targets %}
         .target(
             name: "{{ target.name }}",
             dependencies: [
-                {% for dep in target.dependencies %}
+                {%- for dep in target.dependencies %}
                 .target(name: "{{ dep }}"),
-                {% endfor %}
+                {%- endfor %}
                 .target(name: "{{ target.name }}Internal")
             ],
             path: "{{ target.library_source_path }}",
@@ -58,35 +58,33 @@ var package = Package(
                 .enableExperimentalFeature("StrictConcurrency"),
             ]
         ),
-        {% endfor %}
+        {%- endfor %}
 
-        {% for target in internal_targets %}
+        {%- for target in internal_targets %}
             .target(
                 name: "{{ target.name }}",
                 dependencies: [
-                    {% for dep in target.dependencies %}
+                    {%- for dep in target.dependencies %}
                     .target(name: "{{ dep }}"),
-                    {% endfor %}
+                    {%- endfor %}
                     .target(name: ffiTarget.name)
                 ],
                 path: "{{ target.swift_wrapper_dir }}",
-                {% if !target.excluded_source_files.is_empty() %}
+                {%- if !target.excluded_source_files.is_empty() %}
                 exclude: [
-                    {% for file in target.excluded_source_files %}
+                    {%- for file in target.excluded_source_files %}
                     "{{ file }}",
-                    {% endfor %}
+                    {%- endfor %}
                 ],
-                {% endif %}
+                {%- endif %}
                 sources: ["{{ target.source_file }}"],
-                swiftSettings: [
-                    .swiftLanguageMode(.v5)
-                ]
+                swiftSettings: [.swiftLanguageMode(.v5)]
             ),
-        {% endfor %}
+        {%- endfor %}
 
         ffiTarget,
 
-        {% for target in targets %}
+        {%- for target in targets %}
             .testTarget(
                 name: "{{ target.name }}Tests",
                 dependencies: [
@@ -100,7 +98,7 @@ var package = Package(
                     {% endif %}
                 ]
             ),
-        {% endfor %}
+        {%- endfor %}
     ]
 )
 

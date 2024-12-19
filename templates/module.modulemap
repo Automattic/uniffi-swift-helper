@@ -1,0 +1,7 @@
+module {{ ffi_module_name }} {
+    {%- for file in header_files %}
+    header "{{ file }}"
+    {%- endfor %}
+
+    export *
+}
